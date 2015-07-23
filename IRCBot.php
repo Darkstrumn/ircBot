@@ -34,7 +34,7 @@ class IRCBot
                 $first = false;
                 $this->send_data('JOIN', '#dev');
                 sleep(2);
-                $this->send_data('PRIVMSG', '#dev :' . $this->vhp_token_processor($this->config['greeting']));
+                $this->send_data('PRIVMSG', $this->vhp_token_processor("#dev :" . $this->config['greeting'] . ""));
                 }
             else{;}
             //</if>
@@ -53,7 +53,7 @@ class IRCBot
                 echo "matches:\n";
                 var_dump($matches);
                 $user = $matches[1];
-                $this->on_event_parser($cmd_line);
+                $this->on_event_parser($this->ex);
                 }
             else{;}
             //</if(preg_match("/^:(.+)\!/", $this->ex[0], $matches))>
@@ -69,20 +69,28 @@ class IRCBot
         {
         $this->running = true;
         $this->config = $config;
+        //>>>>>open the database
         $this->socket = fsockopen($this->config['server'], $this->config['port']);
-        //open the database
-        $this->dbh = new PDO('sqlite:IrcDb_PDO.sqlite');
 
-        $this->dbh->exec("INSERT INTO Dogs (Breed, Name, Age) VALUES ('Labrador', 'Tank', 2);".
-        "INSERT INTO Dogs (Breed, Name, Age) VALUES ('Husky', 'Glacier', 7); " .
-        "INSERT INTO Dogs (Breed, Name, Age) VALUES ('Golden-Doodle', 'Ellie', 4);");
+        //$this->dbh = new PDO('sqlite:IrcDb_PDO.sqlite');//<<--live
+        $this->dbh = new PDO('sqlite::memory');//<<--dev
+        //>>>>>create the db (initially, or always in dev-mode)
+        $this->dbh->exec("CREATE TABLE Dogs (Id INTEGER PRIMARY KEY, Breed TEXT, Name TEXT, Age INTEGER)");
+        //>>>>>fixure data
+        $this->dbh->exec("INSERT INTO Dogs (Breed, Name, Age) VALUES ('Labrador', 'Tank', 2);");
+        $this->dbh->exec("INSERT INTO Dogs (Breed, Name, Age) VALUES ('Husky', 'Glacier', 7); ");
+        $this->dbh->exec("INSERT INTO Dogs (Breed, Name, Age) VALUES ('Golden-Doodle', 'Ellie', 4);");
+
+        var_dump( $this->dbh);
 
         $result = $this->dbh->query('SELECT * FROM Dogs');
+        var_dump($result);
         foreach($result as $row)
             {
             echo "**" . $row['Id'] . " " . $row['Breed'] . " " . $row['Name'] . " " . $row['Age'] . "\r\n";
             }
         
+        die;
         return;
         $this->nick = $this->config['nick'];
         $this->login($this->config);
@@ -125,6 +133,7 @@ class IRCBot
         $content = str_ireplace("{1}",chr(1),$content);
         $content = str_ireplace("{10}",chr(10),$content);
         $content = str_ireplace("{13}",chr(13),$content);
+        $content = str_ireplace("{crlf}",chr(13) . chr(10),$content);
         return($content);
         }/*</vhp_token_processor($vhd_template)>*/
         
@@ -208,6 +217,7 @@ class IRCBot
         //>>>>>RESTRICTED, Only authorized personnel beyond this point!
         if(in_array($cmd_issuer, $this->config['auth_proc_users']))
             {
+            echo "**send_data($bot_cmd, $bot_args)";
             $this->send_data($bot_cmd, $bot_args);
             $result = "$bot_cmd issued... .";
             }
@@ -275,7 +285,13 @@ class IRCBot
         {
         $cmd = strtoupper($cmd);
         $msg = ($msg == null ? '' : $msg);
-        fputs($this->socket, $cmd . ' ' . $this->vhp_token_processor($msg) . "\r\n");
+        echo "**send_data(\r\n$cmd  " . $this->vhp_token_processor($msg) . "\r\n)";
+        $lines = explode("\r\n",$msg);
+        //
+        foreach($lines as $line)
+            {
+            fputs($this->socket, $cmd . ' ' . $this->vhp_token_processor($line) . "\r\n");
+            } //</foreach($lines as $line)>       
         echo 'send_data(<strong>' . $cmd . ' ' . $this->vhp_token_processor($msg) . '</strong>)<br />\n';
         }/*</send_data($cmd, $msg = null)>*/
 
@@ -286,7 +302,8 @@ class IRCBot
         $VHPTemplate = "{CHAN} " . chr(1) . ":ACTION {MSG}" . chr(1) . "";
         $content = str_ireplace("{CHAN}",$chan,$VHPTemplate);
         $content = str_ireplace("{MSG}",$this->vhp_token_processor($msg),$content);
-        echo 'send_data(<strong>' . $content . "\r\n" . '</strong>)<br />\n';
+        echo 'send_action(<strong>' . $content . "\r\n" . '</strong>)<br />\n';
+        echo "**send_data(\r\n$cmd  " . $content . "\r\n)";
         fputs($this->socket, $content . "\r\n");
         }/*</send_data($cmd, $msg = null)>*/
 
